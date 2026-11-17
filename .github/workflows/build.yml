@@ -1,6 +1,6 @@
 name: Build
 
-# Compiles the example and every research firmware, so a breaking ESPHome change is caught.
+# Compiles the example config, so a breaking ESPHome change is caught.
 
 on:
   push:
@@ -20,11 +20,6 @@ jobs:
       matrix:
         config:
           - radar-360.yaml
-          - research/first-flash.yaml
-          - research/stage0-pin-characterise.yaml
-          - research/stage1-group-scan.yaml
-          - research/dc-te-controls.yaml
-          - research/button-finder.yaml
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6

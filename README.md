@@ -6,8 +6,8 @@ shop.geekmagic.cc. It is model RD03, and the stock firmware's product id is `rad
 
 GeekMagic doesn't publish the pinout, the panel driver or the firmware, and the case is printed
 shut. Everything here was worked out over Wi-Fi from firmware running on the device itself, with
-no disassembly and no serial cable. If you own one, you can skip all of that: flash
-[`radar-360.yaml`](radar-360.yaml) and the screen works.
+no disassembly and no serial cable. This repo gives you the pinout and a bare-minimum config
+that brings the screen up ([`radar-360.yaml`](radar-360.yaml)). What you build on top is up to you.
 
 ![status](https://img.shields.io/badge/display-working-brightgreen)
 
@@ -67,9 +67,6 @@ and all later updates go over normal ESPHome OTA.
 > slots get overwritten. Only flash this if you're happy to keep ESPHome. ESPHome's `safe_mode`
 > (rollback after repeated failed boots) is your safety net from then on.
 
-If you'd rather prove the flash path first without touching the display, upload
-[`research/first-flash.yaml`](research/first-flash.yaml). It is Wi-Fi, API and OTA only.
-
 ## Gotchas
 
 - **Backlight is active low.** Driving GPIO5 high turns it *off*. Use `inverted: true`.
@@ -79,15 +76,7 @@ If you'd rather prove the flash path first without touching the display, upload
 - **Don't add a CS pin.** CS is hard-wired low. Leave `cs_pin` unset.
 - `invert_colors: false` and `color_order: rgb` give correct colours.
 - **Full-frame images:** a 360x360 RGB565 frame is about 253 KB, so keep `psram:` enabled when
-  using `online_image`.
-
-## What it's used for here
-
-The device fetches a 360x360 PNG every 10 seconds and draws a live clock on top. Home Assistant
-renders that PNG: a dark map, BOM rain radar, range rings, and nearby aircraft from a local ADS-B
-receiver with airline logo, callsign, altitude, registration and route. The `online_image` block
-in the example shows how to wire that up; the renderer itself is site-specific and isn't
-included.
+  drawing large images (for example with `online_image`).
 
 ## How the pins were found
 
@@ -102,15 +91,11 @@ details, including the dead ends.
 3. With the owner pressing the button, a pin-change logger found GPIO38.
 4. An ADC pull-up/pull-down check found that every pin floats except 5, 38 and **15**. GPIO15 is
    actively driven low, which suggests a panel TE output.
-5. A group-testing scan ([`research/stage1-group-scan.yaml`](research/stage1-group-scan.yaml))
-   tried randomly assigning all 30 free pins to CLK/MOSI/DC/CS-low/RST groups at once. It
+5. A group-testing scan tried randomly assigning all 30 free pins to CLK/MOSI/DC/CS-low/RST groups at once. It
    bit-banged a GC9B72 init plus TEON, then watched GPIO15 for TE pulses. It hit on attempt 40
    and decoded the pins by halving the groups on the device.
-6. Control experiments ([`research/dc-te-controls.yaml`](research/dc-te-controls.yaml)) proved
+6. Control experiments proved
    which pin is DC. A data-dependent change in TE timing only happens when DC is right.
-
-The [`research/`](research) folder has the scan firmwares, so you can reuse the method on
-another undocumented SPI panel.
 
 ## Credits
 

@@ -51,13 +51,12 @@ off by default. A later PWM fade test confirmed it is dimmable.
 
 ### 2. Button
 
-The owner pressed the button while
-[`research/button-finder.yaml`](../research/button-finder.yaml) logged level changes on every
+The owner pressed the button while a small test firmware logged level changes on every
 pin. Only GPIO38 changed. That ruled out GPIO38 as CS, which an earlier scan had assumed.
 
 ### 3. Electrical characterisation (Stage 0)
 
-[`research/stage0-pin-characterise.yaml`](../research/stage0-pin-characterise.yaml) reads every
+A test firmware reads every
 free pin's voltage with the internal pull-up, then with the pull-down.
 
 - Every pin floats, except 5 (pull-up), 38 (pull-up) and **15**.
@@ -82,13 +81,11 @@ far too many. Instead, each attempt:
 
 A correct assignment happens with probability 1/5^5 = 1/3125 per attempt, so 25,000 attempts give
 more than 99.9% coverage in a couple of hours, unattended. It hit at **attempt 40**. The firmware
-then confirmed the hit twice and narrowed each group by halving it, all on the device. Code:
-[`research/stage1-group-scan.yaml`](../research/stage1-group-scan.yaml) and
-[`research/includes/grp.h`](../research/includes/grp.h).
+then confirmed the hit twice and narrowed each group by halving it, all on the device.
 
 ### 5. Proving DC vs CS
 
-The decode reported GPIO13 as "CS". [`research/dc-te-controls.yaml`](../research/dc-te-controls.yaml)
+The decode reported GPIO13 as "CS". A second test firmware
 ran controls that measure TE timing:
 
 - reset only, SLPOUT only, and SLPOUT+TEON all produce TE (the panel free-runs);
