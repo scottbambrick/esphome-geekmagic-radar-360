@@ -1,0 +1,45 @@
+name: Build
+
+# Compiles the example and every research firmware, so a breaking ESPHome change is caught.
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"  # weekly, to catch ESPHome releases
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - radar-360.yaml
+          - research/first-flash.yaml
+          - research/stage0-pin-characterise.yaml
+          - research/stage1-group-scan.yaml
+          - research/dc-te-controls.yaml
+          - research/button-finder.yaml
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+      - uses: actions/cache@v5
+        with:
+          path: ~/.platformio
+          key: pio-${{ matrix.config }}
+      - name: Install ESPHome
+        run: pip install "esphome==2026.10.2"
+      - name: Dummy secrets
+        run: |
+          d=$(dirname "${{ matrix.config }}")
+          printf 'api_key: "%s"\nwifi_ssid: "ci"\nwifi_password: "ci-password"\n' \
+            "$(openssl rand -base64 32)" > "$d/secrets.yaml"
+      - name: Compile
+        run: esphome compile "${{ matrix.config }}"

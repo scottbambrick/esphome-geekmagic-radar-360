@@ -1,0 +1,71 @@
+# RESEARCH: logs every GPIO level change while someone presses the button. On the Radar 360 only
+# GPIO38 changed (active-low, external pull-up).
+
+substitutions:
+  name: radar21en
+  friendly_name: Radar 360
+
+
+esphome:
+  name: ${name}
+  includes:
+    - includes/btn.h
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+
+
+text_sensor:
+  - platform: template
+    name: "GC Scan Step"
+    id: gc_ts
+
+switch:
+  - platform: gpio
+    pin:
+      number: 5
+      inverted: true
+    id: bl_en
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+
+interval:
+  - interval: 15ms
+    then:
+      - lambda: |-
+          static char log[120] = "ready";
+          static bool first = true;
+          if (millis() < 30000) return;
+          if (first) { btn_setup(); delay(50); for (size_t k = 0; k < sizeof(BTN_PINS) / sizeof(BTN_PINS[0]); k++) { int p = BTN_PINS[k]; btn_state[p] = btn_level(p); btn_pend[p] = btn_state[p]; } first = false; id(gc_ts).publish_state("armed"); return; }
+          bool changed = false;
+          for (size_t k = 0; k < sizeof(BTN_PINS) / sizeof(BTN_PINS[0]); k++) {
+            int p = BTN_PINS[k];
+            uint8_t l = btn_level(p);
+            if (l == btn_pend[p]) { if (l != btn_state[p]) { btn_state[p] = l; char e[24]; snprintf(e, sizeof(e), "%d=%d ", p, l); size_t n = strlen(log); if (n > 90) { memmove(log, log + 40, strlen(log) - 39); n = strlen(log); } strcat(log, e); changed = true; } }
+            else btn_pend[p] = l;
+          }
+          if (changed) { id(gc_ts).publish_state(log); }

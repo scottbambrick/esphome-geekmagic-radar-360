@@ -1,0 +1,91 @@
+# RESEARCH, Stage 1: group-testing scan for an unknown 4-wire SPI panel, judged by its TE output.
+# Each attempt randomly assigns all 30 candidate pins to one of: CLK, MOSI, DC, CS (held low),
+# RST (pulsed). It bit-bangs a reset plus the GC9B72 init, SLPOUT, TEON and DISPON, then counts
+# edges on GPIO15 (TE). Odds per attempt are 1/5^5, so about 25k attempts cover it. On a hit it
+# repeats twice and then halves each group on-device to name the exact pins. It found the
+# Radar 360's map at attempt 40. Note: the decode mislabelled DC as CS; see dc-te-controls.yaml.
+
+substitutions:
+  name: radar21en
+  friendly_name: Radar 360
+
+
+esphome:
+  name: ${name}
+  includes:
+    - includes/grp.h
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+
+
+text_sensor:
+  - platform: template
+    name: "Group Scan"
+    id: gscan
+
+switch:
+  - platform: gpio
+    pin:
+      number: 5
+      inverted: true
+    id: bl_en
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+
+interval:
+  - interval: 50ms
+    then:
+      - lambda: |-
+          static uint32_t attempt = 0;
+          static int state = 0;  // 0 scanning, 1 finished
+          static uint32_t hits = 0;
+          const uint32_t MAXA = 25000;
+          if (state != 0 || millis() < 40000) return;
+          if (attempt == 0) { g_free_usb(); g_te_prep(); int base = g_te_edges(200000); char b[64]; snprintf(b, sizeof(b), "start: GPIO15 idle edges=%d", base); id(gscan).publish_state(b); }
+          if (attempt >= MAXA) { g_release(); id(gscan).publish_state("DONE no hit after " + std::to_string(MAXA)); state = 1; return; }
+          g_colour(attempt);
+          int e = g_attempt();
+          if (e >= 2) {
+            hits++;
+            std::string d = g_desc();
+            int e2 = g_attempt(), e3 = g_attempt();
+            char b[96]; snprintf(b, sizeof(b), "HIT attempt=%u te=%d/%d/%d ", (unsigned) attempt, e, e2, e3);
+            id(gscan).publish_state(std::string(b) + d);
+            ESP_LOGW("grp", "%s%s", b, d.c_str());
+            if (e2 >= 2 && e3 >= 2) {
+              std::string m = g_decode();
+              id(gscan).publish_state("MAP " + m + "te=15 (attempt " + std::to_string(attempt) + ")");
+              ESP_LOGW("grp", "MAP %s", m.c_str());
+              g_release();
+              state = 1;
+              return;
+            }
+          }
+          attempt++;
+          if (attempt % 500 == 0) id(gscan).publish_state("prog " + std::to_string(attempt) + "/" + std::to_string(MAXA) + " hits=" + std::to_string(hits));

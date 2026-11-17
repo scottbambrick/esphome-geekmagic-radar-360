@@ -1,0 +1,88 @@
+# RESEARCH: control experiments that proved the pin roles (CLK12 MOSI11 DC13 RST8, CS tied low).
+# It measures TE period/high time after: reset only, SLPOUT, SLPOUT+TEON+DISPON, full GC9B72 init,
+# init+TEOFF, init+SWRESET, and TEON with mode byte 0x01. A data-dependent result (TEON 0x01 ->
+# line-rate TE, init changes TE high time 699->212 us) only happens when DC is really GPIO13.
+
+substitutions:
+  name: radar21en
+  friendly_name: Radar 360
+
+
+esphome:
+  name: ${name}
+  includes:
+    - includes/grp.h
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: esp32-s3-devkitc-1
+  variant: esp32s3
+  framework:
+    type: esp-idf
+
+psram:
+  mode: octal
+  speed: 80MHz
+
+logger:
+  level: DEBUG
+  baud_rate: 0
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    encryption:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  min_auth_mode: WPA2
+
+
+text_sensor:
+  - platform: template
+    name: "TE Controls 2"
+    id: gscan
+
+switch:
+  - platform: gpio
+    pin:
+      number: 5
+      inverted: true
+    id: bl_en
+    name: "Backlight"
+    restore_mode: ALWAYS_ON
+
+interval:
+  - interval: 3s
+    then:
+      - lambda: |-
+          static int step = 0;
+          if (millis() < 40000) return;
+          if (step == 0) { g_free_usb(); g_te_prep(); }
+          int test = step % 7;
+          int dcp = 13;  // hypothesis: GPIO13 is DC, CS tied low on the board
+          step++;
+          for (int i = 0; i < G_N; i++) { int q = G_POOL[i]; g_role[i] = q == 12 ? 0 : q == 11 ? 1 : q == 8 ? 4 : q == dcp ? 2 : 5; }
+          g_masks(); g_pins_setup();
+          g_set(0, 0); g_set(1, 0); g_set(2, 1); g_set(3, 1); g_set(4, 1); delay(2);
+          g_set(4, 0); delay(10); g_set(4, 1); delay(120);
+          g_set(3, 0);
+          const char *name = "";
+          if (test == 0) { name = "reset-only"; }
+          else if (test == 1) { name = "slpout-only"; g_cmd(0x11); delay(120); }
+          else if (test == 2) { name = "slpout+teon+dispon"; g_cmd(0x11); delay(120); g_cmd(0x35); g_dat(0); g_cmd(0x29); delay(20); }
+          else {
+            size_t i = 0;
+            while (i < sizeof(G_INIT)) { uint8_t c = G_INIT[i++]; uint8_t n = G_INIT[i++]; g_cmd(c); for (uint8_t k = 0; k < n; k++) g_dat(G_INIT[i++]); }
+            g_cmd(0x11); delay(120); g_cmd(0x35); g_dat(0); g_cmd(0x29); delay(20);
+            if (test == 3) name = "full";
+            if (test == 4) { name = "full+TEOFF"; g_cmd(0x34); delay(20); }
+            if (test == 5) { name = "full+SWRESET"; g_cmd(0x01); delay(150); }
+            if (test == 6) { name = "full+TEON-mode1-as-data"; g_cmd(0x35); g_dat(0x01); delay(20); }
+          }
+          int per, hi, n; g_te_timing(200000, &per, &hi, &n);
+          ESP_LOGW("ctl", "dc=%d %s: rises=%d period=%d us high=%d us", dcp, name, n, per / 10, hi / 10);
